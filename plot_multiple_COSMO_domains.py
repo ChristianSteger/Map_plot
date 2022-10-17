@@ -108,6 +108,7 @@ domains = {
              "startlon_tot": -18.86,
              "pollat": 43.0,
              "pollon": -170.0,
+             "polgam": 0.0,
              "dlon": 0.02,
              "dlat": 0.02,
              "ie_tot": 1542,
@@ -118,6 +119,7 @@ domains = {
              "startlon_tot": -29.805,
              "pollat": 39.25,
              "pollon": -162.00,
+             "polgam": 0.0,
              "dlon": 0.11,
              "dlat": 0.11,
              "ie_tot": 450,
@@ -128,6 +130,7 @@ domains = {
              "startlon_tot": -6.2,
              "pollat": 43.0,
              "pollon": -170.0,
+             "polgam": 0.0,
              "dlon": 0.02,
              "dlat": 0.02,
              "ie_tot": 800,
@@ -141,6 +144,7 @@ domains = {
              "startlon_tot": -65.625,
              "pollat": 90.0,
              "pollon": -180.0,
+             "polgam": 0.0,
              "dlon": 0.02,
              "dlat": 0.02,
              "ie_tot": 2310,
@@ -151,6 +155,7 @@ domains = {
              "startlon_tot": -54.54,
              "pollat": 90.0,
              "pollon": -180.0,
+             "polgam": 0.0,
              "dlon": 0.03,
              "dlat": 0.03,
              "ie_tot": 2750,
@@ -164,6 +169,7 @@ domains = {
              "startlon_tot": -44.66,
              "pollat": 61.0,
              "pollon": -63.7,
+             "polgam": 0.0,
              "dlon": 0.11,
              "dlat": 0.11,
              "ie_tot": 818,
@@ -174,6 +180,7 @@ domains = {
              "startlon_tot": -28.24,
              "pollat": 61.00,
              "pollon": -63.70,
+             "polgam": 0.0,
              "dlon": 0.04,
              "dlat": 0.04,
              "ie_tot": 650,
@@ -251,7 +258,9 @@ for i in list(domains.keys()):
     cen_lon, cen_lat = [], []
     for j in list(domains[i].keys()):
         crs_rot = ccrs.RotatedPole(pole_latitude=domains[i][j]["pollat"],
-                                   pole_longitude=domains[i][j]["pollon"])
+                                   pole_longitude=domains[i][j]["pollon"],
+                                   central_rotated_longitude
+                                   =domains[i][j]["polgam"])
         x, y = ccrs.PlateCarree().transform_point(0.0, 0.0, crs_rot)
         cen_lon.append(x)
         cen_lat.append(y)
@@ -268,7 +277,9 @@ for i in list(domains.keys()):
     domain_ext = [0.0, 0.0, 0.0, 0.0]
     for j in list(domains[i].keys()):
         crs_rot = ccrs.RotatedPole(pole_latitude=domains[i][j]["pollat"],
-                                   pole_longitude=domains[i][j]["pollon"])
+                                   pole_longitude=domains[i][j]["pollon"],
+                                   central_rotated_longitude
+                                   =domains[i][j]["polgam"])
         rlon, rlat = rlon_rlat_1d(domains[i][j], poly_res=0.02)
         poly_rlon, poly_rlat = coord2poly(rlon, rlat)
         coords = crs_laea.transform_points(crs_rot, poly_rlon, poly_rlat)
@@ -348,7 +359,9 @@ for i in list(domains.keys()):
     # Plot COSMO domains
     for j in list(domains[i].keys()):
         crs_rot = ccrs.RotatedPole(pole_latitude=domains[i][j]["pollat"],
-                                   pole_longitude=domains[i][j]["pollon"])
+                                   pole_longitude=domains[i][j]["pollon"],
+                                   central_rotated_longitude
+                                   =domains[i][j]["polgam"])
         rlon, rlat = rlon_rlat_1d(domains[i][j])
         poly_rlon, poly_rlat = coord2poly(rlon, rlat)
         poly = plt.Polygon(list(zip(poly_rlon, poly_rlat)), facecolor="none",
