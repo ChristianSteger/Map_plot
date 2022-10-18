@@ -323,13 +323,14 @@ for i in list(domains.keys()):
     domain_set[i] = {}
     domain_set[i]["map_projection"] = crs_laea
     domain_set[i]["domain_extent"] = domain_ext
-    domain_set[i]["width_ratios"] = 1.0 / ax.get_data_ratio()
+    domain_set[i]["width"] = 1.0 / ax.get_data_ratio()
     domain_set[i]["extent_natural_earth"] = extent_na
     # plt.close(fig)
 
 # Final plot with domains
-fig = plt.figure(figsize=(16.0, 4.23))
-width_ratios = [domain_set[i]["width_ratios"] for i in domains.keys()]
+width_ratios = [domain_set[i]["width"] for i in domains.keys()]
+fig_width = 16.0
+fig = plt.figure(figsize=(fig_width, fig_width / sum(width_ratios)))
 gs = gridspec.GridSpec(1, 3, left=0.02, bottom=0.02, right=0.98,
                        top=0.98, hspace=0.0, wspace=0.025,
                        width_ratios=width_ratios)
