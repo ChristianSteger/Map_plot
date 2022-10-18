@@ -185,9 +185,15 @@ domains = {
              "dlat": 0.04,
              "ie_tot": 650,
              "je_tot": 650}
-    }}
+    }
+    # -------------------------------------------------------------------------
+}
 
-# Domain label offsets (in rotated coordinates [rlon, rlat]; optional)
+# -----------------------------------------------------------------------------
+# Optional settings (-> enhance plot layout)
+# -----------------------------------------------------------------------------
+
+# Domain label offsets (in rotated coordinates [rlon, rlat])
 label_offset = {
     "Europe": {
         "EURO":        (1.5, -3.2),
@@ -206,6 +212,7 @@ label_offset = {
 
 # Miscellaneous settings
 dist_edge = {"Europe": 200000.0, "Atlantic": 300000.0, "East_Asia": 300000.0}
+dist_edge_default = 300000.0
 # minimal distance from domains to plot axis in map projection units
 regrid_shape = 5000
 # remapping resolution of plt.imshow(). Increase this value if background is
@@ -288,7 +295,7 @@ for i in list(domains.keys()):
                            linewidth=1.5, zorder=4, transform=crs_laea)
         ax.add_patch(poly)
         poly_shp = Polygon(zip(coords[:, 0], coords[:, 1])) \
-            .buffer(dist_edge[i])
+            .buffer(dist_edge.get(i, dist_edge_default))
         poly = PolygonPatch(poly_shp, facecolor="none", edgecolor="gray",
                             alpha=1.0, linewidth=1.5, zorder=4,
                             transform=crs_laea)
@@ -329,9 +336,9 @@ for i in list(domains.keys()):
 
 # Final plot with domains
 width_ratios = [domain_set[i]["width"] for i in domains.keys()]
-fig_width = 16.0
+fig_width = float(len(domains) * (16 / 3))
 fig = plt.figure(figsize=(fig_width, fig_width / sum(width_ratios)))
-gs = gridspec.GridSpec(1, 3, left=0.02, bottom=0.02, right=0.98,
+gs = gridspec.GridSpec(1, len(domains), left=0.02, bottom=0.02, right=0.98,
                        top=0.98, hspace=0.0, wspace=0.025,
                        width_ratios=width_ratios)
 n = 0
