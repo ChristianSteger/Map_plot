@@ -25,8 +25,8 @@ from descartes import PolygonPatch
 mpl.style.use("classic")
 
 # Paths to folders
-path_data = "/Users/csteger/Desktop/Data/"  # working directory
-path_plot = "/Users/csteger/Desktop/"       # path for plot
+path_data = os.getenv("HOME") + "/Desktop/Data/"  # working directory
+path_plot = os.getenv("HOME") + "/Desktop/"       # path for plot
 
 ###############################################################################
 # Download high-resolution background data from Natural Earth

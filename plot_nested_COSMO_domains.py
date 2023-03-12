@@ -1,8 +1,13 @@
 # Description: Plot nested COSMO domains
 #
-# Author: Christian R. Steger, October 2022
+# Required conda environment:
+# conda create -n plot_env numpy matplotlib cartopy xarray cmcrameri
+# -c conda-forge
+#
+# Author: Christian R. Steger, March 2023
 
 # Load modules
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
@@ -20,6 +25,9 @@ mpl.rcParams["mathtext.fontset"] = "custom"
 # custom mathtext font (set default to Bitstream Vera Sans)
 mpl.rcParams["mathtext.default"] = "rm"
 mpl.rcParams["mathtext.rm"] = "Bitstream Vera Sans"
+
+# Paths to folders
+path_plot = os.getenv("HOME") + "/Desktop/"  # path for plot
 
 ###############################################################################
 # Load data (elevation, coordinates, rotated coordinate system)
@@ -176,6 +184,6 @@ cb = mpl.colorbar.ColorbarBase(ax, cmap=cmap_ter, norm=norm_ter,
                                ticks=levels_ter, orientation="vertical")
 plt.ylabel("Elevation [m]", labelpad=8.0)
 # -----------------------------------------------------------------------------
-fig.savefig("/Users/csteger/Desktop/COSMO_nested_domains.pdf", dpi=300,
+fig.savefig(path_plot + "COSMO_nested_domains.pdf", dpi=300,
             bbox_inches="tight")
 plt.close(fig)
