@@ -4,3 +4,5 @@ Miscellaneous Python scripts for producing map plots related to climate modellin
 - **plot_multiple_COSMO_domains.py**: Plot multiple COSMO domains with high-resolution background data from [Natural Earth](https://www.naturalearthdata.com).
 The plotting of the raster data works faster with the optional dependency *pykdtree*.
 ![Alt text](https://github.com/ChristianSteger/Media/blob/master/COSMO_domains.png?raw=true "Output example")
+- **plot_DEM.py**: Plot Digital Elevation Model (DEM) data.
+![Alt text](https://github.com/ChristianSteger/Media/blob/master/DEM_map_plot.pdf?raw=true "Output example")
