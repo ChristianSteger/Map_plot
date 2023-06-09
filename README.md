@@ -5,4 +5,4 @@ Miscellaneous Python scripts for producing map plots related to climate modellin
 The plotting of the raster data works faster with the optional dependency *pykdtree*.
 ![Alt text](https://github.com/ChristianSteger/Media/blob/master/COSMO_domains.png?raw=true "Output example")
 - **plot_DEM.py**: Plot Digital Elevation Model (DEM) data.
-![Alt text](https://github.com/ChristianSteger/Media/blob/master/DEM_map_plot.pdf?raw=true "Output example")
+![Alt text](https://github.com/ChristianSteger/Media/blob/master/DEM_map_plot.png?raw=true "Output example")
