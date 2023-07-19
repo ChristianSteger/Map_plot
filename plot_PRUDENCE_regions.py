@@ -49,7 +49,7 @@ regions = {
 file_extpar = "/Users/csteger/Dropbox/IAC/Data/Model/COSMO/EXTPAR_files/" \
               + "EURO/extpar_12km_europe_771x771.nc"
 # -> CSCS: /project/pr133/extpar_crclim/crclim/extpar_12km_europe_771x771.nc
-path_plot = "/Users/csteger/Desktop/PRUDENCE_regions_map_plot.png"
+path_plot = "/Users/csteger/Desktop/PRUDENCE_regions_map.png"
 
 ###############################################################################
 # Create map plot
@@ -102,7 +102,7 @@ for i in regions.keys():
     ax.add_patch(poly)
     x, y = poly_coords_geo[i].centroid.xy
     t = plt.text(x[0], y[0], i, fontsize=11, fontweight="bold",
-                 color="black", transform=ccrs.PlateCarree())
+                 color="black", transform=ccrs.PlateCarree(), zorder=6)
     t.set_bbox(dict(facecolor="white", alpha=0.8, edgecolor="black",
                     boxstyle="round,pad=0.5"))
 ax.set_extent([-18.5, 17.5, -12.5, 25.0], crs=ccrs_rot_pole)

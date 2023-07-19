@@ -11,4 +11,4 @@ The plotting of the raster data works faster with the optional dependency *pykdt
 ![Alt text](https://github.com/ChristianSteger/Media/blob/master/DEM_map_plot.png?raw=true "Output example")
 
 - **plot_PRUDENCE_regions.py**: Plot PRUDENCE regions on a map with terrain from COSMO simulation.
-![Alt text](https://github.com/ChristianSteger/Media/blob/master/PRUDENCE_regions_map_plot.png?raw=true "Output example")
+![Alt text](https://github.com/ChristianSteger/Media/blob/master/PRUDENCE_regions_map.png?raw=true "Output example")
