@@ -1,4 +1,17 @@
-Miscellaneous Python scripts for producing map plots related to climate modelling:
+# Map_plot
+Miscellaneous Python scripts for producing map plots related to climate modelling.
+
+# Installation
+
+First, create a Conda environment with all the required Python packages:
+
+```bash
+conda create -n map_plot -c conda-forge numpy tqdm requests xarray matplotlib cartopy cmcrameri shapely pyinterp
+```
+
+Subsequently, install the Python packages [Utilities](https://github.com/ChristianSteger/Utilities).
+
+# Visualisation scripts
 
 - **plot_nested_COSMO_domains.py**: Plot nested COSMO domains.
 ![Alt text](https://github.com/ChristianSteger/Media/blob/master/COSMO_nested_domains.png?raw=true "Output example")

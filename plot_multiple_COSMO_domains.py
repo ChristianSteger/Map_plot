@@ -200,7 +200,7 @@ fig = plt.figure(figsize=(18.0, 5.0))  # width, height
 gs = gridspec.GridSpec(1, 3, left=0.02, bottom=0.02, right=0.98,
                        top=0.98, hspace=0.0, wspace=0.025,
                        width_ratios=[1.0, 1.35, 1.4375])
-for ind_i, i in enumerate(list(domains.keys())):
+for ind_i, i in enumerate(domains.keys()):
 
     # Compute 'average coordinate origin' for domain
     cen_lon, cen_lat = [], []
@@ -215,9 +215,9 @@ for ind_i, i in enumerate(list(domains.keys())):
     cen_lon, cen_lat = np.mean(cen_lon), np.mean(cen_lat)
 
     # Define map projection
-    crs_laea = ccrs.LambertAzimuthalEqualArea(
+    crs_map = ccrs.LambertAzimuthalEqualArea(
         central_longitude=cen_lon, central_latitude=cen_lat)
-    crs_proj_laea = CRS.from_user_input(crs_laea)
+    crs_proj_map = CRS.from_user_input(crs_map)
 
     # Compute bounding box in map projection
     domains_map_proj = []
@@ -240,7 +240,7 @@ for ind_i, i in enumerate(list(domains.keys())):
 
         # Rectangular domain in map projection
         crs_proj_rot = CRS.from_user_input(crs_rot)
-        project = Transformer.from_crs(crs_proj_rot, crs_proj_laea,
+        project = Transformer.from_crs(crs_proj_rot, crs_proj_map,
                                        always_xy=True).transform
         domains_map_proj.append(transform(project, poly))
     bounds = MultiPolygon(domains_map_proj).bounds
@@ -254,7 +254,7 @@ for ind_i, i in enumerate(list(domains.keys())):
     x_ip = np.linspace(bounds[0], bounds[2], 3000)
     y_ip = np.linspace(bounds[1], bounds[3], 3000)
     crs_proj_image = CRS.from_user_input(crs_image)
-    transformer = Transformer.from_crs(crs_proj_laea, crs_proj_image,
+    transformer = Transformer.from_crs(crs_proj_map, crs_proj_image,
                                        always_xy=True)
     lon_ip, lat_ip = transformer.transform(*np.meshgrid(x_ip, y_ip))
 
@@ -288,20 +288,20 @@ for ind_i, i in enumerate(list(domains.keys())):
 
     # Plot
     bounds_ro = (bounds[0], bounds[2], bounds[1], bounds[3])
-    ax = plt.subplot(gs[ind_i], projection=crs_laea)
-    ax.imshow(np.flipud(image_ip), extent=bounds_ro, transform=crs_laea)
+    ax = plt.subplot(gs[ind_i], projection=crs_map)
+    ax.imshow(np.flipud(image_ip), extent=bounds_ro, transform=crs_map)
     ax.set_aspect("auto")
     ax.coastlines("50m", linewidth=0.5)
     for ind_j, j in enumerate(domains_map_proj):
         poly = polygon2patch(j, facecolor="none", edgecolor="black",
-                             alpha=1.0, linewidth=2.0, transform=crs_laea)
+                             alpha=1.0, linewidth=2.0, transform=crs_map)
         ax.add_collection(poly)
         # ---------------------------------------------------------------------
         dom_name = list(domains[i].keys())[ind_j]
         plt.text(*label_pos[i][dom_name], domains[i][dom_name]["name_plot"],
-                 fontsize=10, fontweight="bold", transform=crs_laea)
+                 fontsize=10, fontweight="bold", transform=crs_map)
         # ---------------------------------------------------------------------
-    ax.set_extent(bounds_ro, crs=crs_laea)
+    ax.set_extent(bounds_ro, crs=crs_map)
     print("Region " + i + " plotted")
 
 fig.savefig(path_plot + "COSMO_domains.png", dpi=300, bbox_inches="tight")
