@@ -1,9 +1,5 @@
 # Description: Plot nested COSMO domains
 #
-# Required conda environment:
-# conda create -n plot_env numpy matplotlib cartopy xarray cmcrameri
-# -c conda-forge
-#
 # Author: Christian R. Steger, March 2023
 
 # Load modules
@@ -17,6 +13,7 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import xarray as xr
 from cmcrameri import cm
+from utilities.plot import truncate_colormap
 
 mpl.style.use("classic")
  
@@ -27,7 +24,8 @@ mpl.rcParams["mathtext.default"] = "rm"
 mpl.rcParams["mathtext.rm"] = "Bitstream Vera Sans"
 
 # Paths to folders
-path_plot = os.getenv("HOME") + "/Desktop/"  # path for plot
+path_data = "/Users/csteger/Dropbox/IAC/Temp/Map_plot_data/"
+path_plot = "/Users/csteger/Desktop/"
 
 ###############################################################################
 # Load data (elevation, coordinates, rotated coordinate system)
@@ -37,25 +35,21 @@ path_plot = os.getenv("HOME") + "/Desktop/"  # path for plot
 #        *c.nc files with constant fields that are created during the
 #        COSMO run
 
-# # From EXTPAR file (select relevant subdomain)
-# files = {"coarse": {"path": "/Users/csteger/Desktop/HSURF/"
-#                             + "extpar_euro_12km_771x771.nc",
-#                     "slice_rlon": slice(172, 533),
-#                     "slice_rlat": slice(156, 517)},
-#          "fine":   {"path": "/Users/csteger/Desktop/HSURF/"
-#                             + "extpar_euro_2km_2313x2313.nc",
-#                     "slice_rlon": slice(0, 1542),
-#                     "slice_rlat": slice(0, 1542)}}
+# From EXTPAR file (select relevant subdomain)
+files = {"coarse": {"path": path_data + "extpar_12km_europe_771x771.nc",
+                    "slice_rlon": slice(172, 533),
+                    "slice_rlat": slice(156, 517)},
+         "fine":   {"path": path_data + "extpar_2km_europe_2313x2313.nc",
+                    "slice_rlon": slice(0, 1542),
+                    "slice_rlat": slice(0, 1542)}}
 
-# From COSMO output file (*c.nc)
-files = {"coarse": {"path": "/Users/csteger/Desktop/HSURF/"
-                            + "lffd20210522000000c_lm_c.nc",
-                    "slice_rlon": slice(None, None),
-                    "slice_rlat": slice(None, None)},
-         "fine":   {"path": "/Users/csteger/Desktop/HSURF/"
-                            + "lffd20210522000000c_lm_f.nc",
-                    "slice_rlon": slice(None, None),
-                    "slice_rlat": slice(None, None)}}
+# # From COSMO output file (*c.nc)
+# files = {"coarse": {"path": path_data + "lffd20210522000000c_lm_c.nc",
+#                     "slice_rlon": slice(None, None),
+#                     "slice_rlat": slice(None, None)},
+#          "fine":   {"path": path_data + "lffd20210522000000c_lm_f.nc",
+#                     "slice_rlon": slice(None, None),
+#                     "slice_rlat": slice(None, None)}}
 
 # Load data
 data = {}
@@ -75,24 +69,21 @@ for i in list(files.keys()):
 ###############################################################################
 
 # Load NCL colormap (optional; comment out in case NCL colormap is not used)
-file = "/Users/csteger/Desktop/OceanLakeLandSnow.rgb"
+file = path_data + "OceanLakeLandSnow.rgb"
 # Source of NCL rgb-file:
 # https://www.ncl.ucar.edu/Document/Graphics/color_table_gallery.shtml
 rgb = np.loadtxt(file, comments=("#", "ncolors"))
-if rgb.max() > 1.0:
+if np.max(rgb) > 1.0:
     rgb /= 255.0
 print("Number of colors: " + str(rgb.shape[0]))
 cmap_ncl = mpl.colors.LinearSegmentedColormap.from_list("OceanLakeLandSnow",
                                                         rgb, N=rgb.shape[0])
 
 # Colormap for terrain
-# cmap_ter, min_v, max_v = plt.get_cmap("terrain"), 0.25, 1.00  # matplotlib
-# cmap_ter, min_v, max_v = cm.fes, 0.50, 1.00                   # crameri
-cmap_ter, min_v, max_v = cmap_ncl, 0.05, 1.00                 # NCL
-cmap_ter = mpl.colors.LinearSegmentedColormap.from_list(
-    "trunc({n},{a:.2f},{b:.2f})".format(
-        n=cmap_ter.name, a=min_v, b=max_v),
-    cmap_ter(np.linspace(min_v, max_v, 100)))
+# cmap_ter, v_min, v_max = plt.get_cmap("terrain"), 0.25, 1.00  # matplotlib
+# cmap_ter, v_min, v_max = cm.fes, 0.50, 1.00                   # crameri
+cmap_ter, v_min, v_max = cmap_ncl, 0.05, 1.00                 # NCL
+cmap_ter = truncate_colormap(cmap_ter, v_min, v_max)
 levels_ter = np.arange(0.0, 3000.0, 200.0)
 norm_ter = mpl.colors.BoundaryNorm(levels_ter, ncolors=cmap_ter.N,
                                    extend="max")

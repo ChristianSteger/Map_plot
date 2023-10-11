@@ -1,11 +1,5 @@
 # Description: Plot Digital Elevation Model (DEM) data
 #
-# Required conda environment:
-# conda create -n plot_env numpy matplotlib cartopy xarray cmcrameri shapely
-# -c conda-forge
-#  -> additionally, the package 'utilities' has to be installed:
-#     https://github.com/ChristianSteger/Utilities
-#
 # Author: Christian R. Steger, June 2023
 
 # Load modules
@@ -32,7 +26,7 @@ mpl.rcParams["mathtext.default"] = "rm"
 mpl.rcParams["mathtext.rm"] = "Bitstream Vera Sans"
 
 # Paths to folders
-path_dem = "/Users/csteger/Desktop/GLOBE/"
+path_dem = "/Users/csteger/Dropbox/IAC/Temp/Map_plot_data/"
 # path_dem = "/store/c2sm/extpar_raw_data/topo/globe/"  # CSCS
 path_plot = "/Users/csteger/Desktop/"
 

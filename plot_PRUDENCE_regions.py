@@ -1,12 +1,6 @@
 # Description: Plot PRUDENCE regions on a map with terrain from COSMO
 #              simulation and optionally compute (binary) masks for region(s)
 #
-# Required conda environment:
-# conda create -n plot_env numpy matplotlib cartopy xarray cmcrameri
-# -c conda-forge
-#  -> additionally, the package 'utilities' has to be installed:
-#     https://github.com/ChristianSteger/Utilities
-#
 # Author: Christian R. Steger, July 2023
 
 # Load modules
@@ -22,6 +16,7 @@ from utilities.grid import polygon_rectangular
 from utilities.plot import truncate_colormap
 from utilities.grid import coord_edges
 from utilities.grid import polygon_inters_exact
+from utilities.plot import polygon2patch
 # from shapely.ops import transform
 # from pyproj import CRS, Transformer
 
@@ -45,11 +40,9 @@ regions = {
 # -> based on Christensen and Christensen (2007),
 #    https://doi.org/10.1007/s10584-006-9210-7, Fig. 4
 
-# Paths
-file_extpar = "/Users/csteger/Dropbox/IAC/Data/Model/COSMO/EXTPAR_files/" \
-              + "EURO/extpar_12km_europe_771x771.nc"
-# -> CSCS: /project/pr133/extpar_crclim/crclim/extpar_12km_europe_771x771.nc
-path_plot = "/Users/csteger/Desktop/PRUDENCE_regions_map.png"
+# Paths to folders
+path_data = "/Users/csteger/Dropbox/IAC/Temp/Map_plot_data/"
+path_plot = "/Users/csteger/Desktop/"
 
 ###############################################################################
 # Create map plot
@@ -64,7 +57,7 @@ for i in regions.keys():
     # grid spacing (0.01 deg is ~1km)
 
 # Load data from EXTPAR file
-ds = xr.open_dataset(file_extpar)
+ds = xr.open_dataset(path_data + "extpar_12km_europe_771x771.nc")
 rlon = ds["rlon"].values
 rlat = ds["rlat"].values
 elevation = ds["HSURF"].values
@@ -95,11 +88,10 @@ plt.pcolormesh(rlon, rlat, elevation, shading="auto", cmap=cmap, norm=norm)
 ax.coastlines(resolution="50m", linewidth=0.5)
 ax.set_aspect("auto")
 for i in regions.keys():
-    poly = plt.Polygon(list(zip(*poly_coords_geo[i].exterior.xy)),
-                       facecolor="none",
-                       edgecolor="black", linewidth=3.0, linestyle="-",
-                       zorder=2, transform=ccrs.PlateCarree())
-    ax.add_patch(poly)
+    poly_plot = polygon2patch(poly_coords_geo[i], facecolor="none",
+                              edgecolor="black", linewidth=3.0, linestyle="-",
+                              zorder=2, transform=ccrs.PlateCarree())
+    ax.add_collection(poly_plot)
     x, y = poly_coords_geo[i].centroid.xy
     t = plt.text(x[0], y[0], i, fontsize=11, fontweight="bold",
                  color="black", transform=ccrs.PlateCarree(), zorder=6)
@@ -120,11 +112,12 @@ cb = mpl.colorbar.ColorbarBase(ax, cmap=cmap, norm=norm,
                                ticks=ticks, orientation="vertical")
 plt.ylabel("Elevation [m]", labelpad=8.0)
 # -----------------------------------------------------------------------------
-fig.savefig(path_plot, dpi=300, bbox_inches="tight")
+fig.savefig(path_plot + "PRUDENCE_regions_map.png", dpi=300,
+            bbox_inches="tight")
 plt.close(fig)
 
 ###############################################################################
-# Create (binary) masks for regions
+# Create fractional and binary masks for regions
 ###############################################################################
 
 # # Compute mask for specific regions

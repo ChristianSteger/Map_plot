@@ -1,11 +1,7 @@
 # Description: Plot multiple COSMO domains with high-resolution background
 #              data from Natural Earth (https://www.naturalearthdata.com)
 #
-# Required conda environment:
-# conda create -n plot_env numpy matplotlib cartopy tqdm requests rasterio
-# shapely descartes pykdtree -c conda-forge
-#
-# Author: Christian R. Steger, October 2022
+# Author: Christian R. Steger, October 2023
 
 # Load modules
 import os
@@ -14,19 +10,23 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 import matplotlib.gridspec as gridspec
 import cartopy.crs as ccrs
-import time
 from tqdm import tqdm
 import requests
 import zipfile
-import rasterio
-from shapely.geometry import Polygon
-from descartes import PolygonPatch
+from shapely.geometry import MultiPolygon
+from shapely.ops import transform
+import pyinterp
+from PIL import Image
+import PIL
+from utilities.plot import polygon2patch
+from utilities.grid import polygon_rectangular
+from pyproj import CRS, Transformer
 
 mpl.style.use("classic")
 
 # Paths to folders
-path_data = os.getenv("HOME") + "/Desktop/Data/"  # working directory
-path_plot = os.getenv("HOME") + "/Desktop/"       # path for plot
+path_data = "/Users/csteger/Dropbox/IAC/Temp/Map_plot_data/"  # working dir.
+path_plot = "/Users/csteger/Desktop/"
 
 ###############################################################################
 # Download high-resolution background data from Natural Earth
@@ -38,7 +38,7 @@ path_plot = os.getenv("HOME") + "/Desktop/"       # path for plot
 file_url = "https://www.naturalearthdata.com/http//www.naturalearthdata" \
            + ".com/download/10m/raster/HYP_LR_SR_OB_DR.zip"
 # further available data can be found here:
-# https://www.naturalearthdata.com/features/ -> Raster Data Themes
+# https://www.naturalearthdata.com/downloads/10m-raster-data
 
 # Download
 if not os.path.isdir(path_data):
@@ -65,34 +65,32 @@ with zipfile.ZipFile(path_data + file_url.split("/")[-1], "r") as zip_ref:
     zip_ref.extractall(path_data + file_name)
 os.remove(path_data + file_url.split("/")[-1])
 
-# Path to GeoTIFF with background
+# Path to TIFF with background
 file_bg = path_data + file_name + "/" + file_name + ".tif"
 
 ###############################################################################
 # Load and check Natural Earth background data
 ###############################################################################
 
-# Load GeoTIFF
-src = rasterio.open(file_bg)
-image = np.empty(src.read(1).shape + (3,), dtype=src.read(1).dtype)
-for i in range(0, 3):
-    image[:, :, i] = src.read(i + 1)
-extent = [src.bounds.left, src.bounds.right,
-          src.bounds.bottom, src.bounds.top]
-src.close()
+# Load image and create geographic coordinates
+PIL.Image.MAX_IMAGE_PIXELS = 233280000
+image = np.flipud(plt.imread(file_bg))  # (8100, 16200, 3)
+# (M, N, 3): an image with RGB values (0-1 float or 0-255 int)
+# longitude: -180.0 -> +180.0 degree, latitude: -90.0 -> +90.0 degree
+extent = (-180.0, 180.0, -90.0, 90.0)
+dlon_h = (extent[1] - extent[0]) / (float(image.shape[1]) * 2.0)
+lon = np.linspace(extent[0] + dlon_h, extent[1] - dlon_h, image.shape[1])
+dlat_h = (extent[3] - extent[2]) / (float(image.shape[0]) * 2.0)
+lat = np.linspace(extent[2] + dlat_h, extent[3] - dlat_h, image.shape[0])
+crs_image = ccrs.PlateCarree()
 
-# Test plot (equidistant cylindrical projection)
-fig = plt.figure(figsize=(12, 6))
-ax = plt.axes()
-plt.imshow(image, extent=extent)
-ax.set_aspect("auto")
-xt = plt.xticks(range(-180, 210, 30))
-yt = plt.yticks(range(-90, 120, 30))
-# plt.close(fig)
-
-# Coordinates for pixel edges
-lon = np.linspace(extent[0], extent[1], image.shape[1] + 1, dtype=np.float64)
-lat = np.linspace(extent[3], extent[2], image.shape[0] + 1, dtype=np.float64)
+# # Test plot in geographic coordinate system
+# fig = plt.figure(figsize=(12, 6))
+# ax = plt.axes()
+# plt.imshow(np.flipud(image), extent=extent)
+# ax.set_aspect("auto")
+# xt = plt.xticks(range(-180, 210, 30))
+# yt = plt.yticks(range(-90, 120, 30))
 
 ###############################################################################
 # Domain specifications and plot settings
@@ -189,79 +187,22 @@ domains = {
     # -------------------------------------------------------------------------
 }
 
-# -----------------------------------------------------------------------------
-# Optional settings (-> enhance plot layout)
-# -----------------------------------------------------------------------------
-
-# Domain label offsets (in rotated coordinates [rlon, rlat])
-label_offset = {
-    "Europe": {
-        "EURO":        (1.5, -3.2),
-        "EURO-CORDEX": (1.8, -5.8),
-        "ALP":         (1.5, -3.2),
-    },
-    "Atlantic": {
-        "T_ATL":   (36.5, -3.5),
-        "L_ATL":   (71.5, -3.4),
-    },
-    "East_Asia": {
-        "EAS-CORDEX":  (2.4, -5.4),
-        "BECCY":       (1.6, -4.0),
-    }}
-# -> define according to intermediate plot generated below
-
-# Miscellaneous settings
-dist_edge = {"Europe": 200000.0, "Atlantic": 300000.0, "East_Asia": 300000.0}
-dist_edge_default = 300000.0
-# minimal distance from domains to plot axis in map projection units
-regrid_shape = 5000
-# remapping resolution of plt.imshow(). Increase this value if background is
-# too pixelated. Plotting is substantially faster with smaller value.
-
-###############################################################################
-# Functions
-###############################################################################
-
-
-# Compute 1-dimensional coordinates for domain
-def rlon_rlat_1d(domain, poly_res=0.01):
-
-    rlon = np.linspace(domain["startlon_tot"] - domain["dlon"] / 2.0,
-                       domain["startlon_tot"] - domain["dlon"] / 2.0
-                       + domain["ie_tot"] * domain["dlon"],
-                       int(domain["ie_tot"] * domain["dlon"] / poly_res) + 1)
-    rlat = np.linspace(domain["startlat_tot"] - domain["dlat"] / 2.0,
-                       domain["startlat_tot"] - domain["dlat"] / 2.0
-                       + domain["je_tot"] * domain["dlat"],
-                       int(domain["je_tot"] * domain["dlat"] / poly_res) + 1)
-
-    return rlon, rlat
-
-
-# Compute polygon from 1-dimensional coordinates
-def coord2poly(x, y):
-
-    poly_x = np.hstack((x,
-                        np.repeat(x[-1], len(y))[1:],
-                        x[::-1][1:],
-                        np.repeat(x[0], len(y))[1:]))
-    poly_y = np.hstack((np.repeat(y[0], len(x)),
-                        y[1:],
-                        np.repeat(y[-1], len(x))[1:],
-                        y[::-1][1:]))
-
-    return poly_x, poly_y
-
-
 ###############################################################################
 # Plot
 ###############################################################################
 
-# Intermediate plot with domains (-> compute domain settings)
-domain_set = {}
-for i in list(domains.keys()):
+# Interpolation axis
+x_axis = pyinterp.Axis(lon, is_circle=True)
+y_axis = pyinterp.Axis(lat)
 
-    # Define map projection
+# Intermediate plot with domains (-> compute domain settings)
+fig = plt.figure(figsize=(18.0, 5.0))  # width, height
+gs = gridspec.GridSpec(1, 3, left=0.02, bottom=0.02, right=0.98,
+                       top=0.98, hspace=0.0, wspace=0.025,
+                       width_ratios=[1.0, 1.35, 1.4375])
+for ind_i, i in enumerate(list(domains.keys())):
+
+    # Compute 'average coordinate origin' for domain
     cen_lon, cen_lat = [], []
     for j in list(domains[i].keys()):
         crs_rot = ccrs.RotatedPole(pole_latitude=domains[i][j]["pollat"],
@@ -272,119 +213,96 @@ for i in list(domains.keys()):
         cen_lon.append(x)
         cen_lat.append(y)
     cen_lon, cen_lat = np.mean(cen_lon), np.mean(cen_lat)
+
+    # Define map projection
     crs_laea = ccrs.LambertAzimuthalEqualArea(
         central_longitude=cen_lon, central_latitude=cen_lat)
+    crs_proj_laea = CRS.from_user_input(crs_laea)
 
-    fig = plt.figure()
-    ax = plt.axes(projection=crs_laea)
-    plt.scatter(cen_lon, cen_lat, s=80, marker="*", color="black")
-    ax.coastlines("110m")
-
-    # Plot COSMO domains
-    domain_ext = [0.0, 0.0, 0.0, 0.0]
+    # Compute bounding box in map projection
+    domains_map_proj = []
     for j in list(domains[i].keys()):
+
+        # Rectangular domain in rotated coordinates
         crs_rot = ccrs.RotatedPole(pole_latitude=domains[i][j]["pollat"],
                                    pole_longitude=domains[i][j]["pollon"],
                                    central_rotated_longitude
                                    =domains[i][j]["polgam"])
-        rlon, rlat = rlon_rlat_1d(domains[i][j], poly_res=0.02)
-        poly_rlon, poly_rlat = coord2poly(rlon, rlat)
-        coords = crs_laea.transform_points(crs_rot, poly_rlon, poly_rlat)
-        poly = plt.Polygon(list(zip(coords[:, 0], coords[:, 1])),
-                           facecolor="none", edgecolor="black", alpha=1.0,
-                           linewidth=1.5, zorder=4, transform=crs_laea)
-        ax.add_patch(poly)
-        poly_shp = Polygon(zip(coords[:, 0], coords[:, 1])) \
-            .buffer(dist_edge.get(i, dist_edge_default))
-        poly = PolygonPatch(poly_shp, facecolor="none", edgecolor="gray",
-                            alpha=1.0, linewidth=1.5, zorder=4,
-                            transform=crs_laea)
-        ax.add_patch(poly)
-        x, y = poly_shp.exterior.coords.xy
-        domain_ext = [np.minimum(domain_ext[0], np.min(x)),
-                      np.maximum(domain_ext[1], np.max(x)),
-                      np.minimum(domain_ext[2], np.min(y)),
-                      np.maximum(domain_ext[3], np.max(y))]
-        x_txt, y_txt = rlon[0], rlat[-1]
-        if (i in label_offset.keys()) and (j in label_offset[i].keys()):
-            x_txt += label_offset[i][j][0]
-            y_txt += label_offset[i][j][1]
-        plt.text(x_txt, y_txt, domains[i][j]["name_plot"],
-                 fontsize=10, fontweight="bold", transform=crs_rot)
+        rlon_llc = domains[i][j]["startlon_tot"] \
+            - (domains[i][j]["dlon"] / 2.0)
+        rlat_llc = domains[i][j]["startlat_tot"] \
+            - (domains[i][j]["dlat"] / 2.0)
+        box = (rlon_llc,
+               rlat_llc,
+               rlon_llc + domains[i][j]["ie_tot"] * domains[i][j]["dlon"],
+               rlat_llc + domains[i][j]["je_tot"] * domains[i][j]["dlat"])
+        poly = polygon_rectangular(box, spacing=0.01)
 
-    ax.set_extent(domain_ext, crs=crs_laea)
+        # Rectangular domain in map projection
+        crs_proj_rot = CRS.from_user_input(crs_rot)
+        project = Transformer.from_crs(crs_proj_rot, crs_proj_laea,
+                                       always_xy=True).transform
+        domains_map_proj.append(transform(project, poly))
+    bounds = MultiPolygon(domains_map_proj).bounds
+    # x_min, y_min, x_max, y_max
+    bounds = (bounds[0] - 250_000.0,
+              bounds[1] - 250_000.0,
+              bounds[2] + 250_000.0,
+              bounds[3] + 250_000.0)
 
-    # Define boundaries for Natural Earth data that is considered
-    dx = dy = 2000.0  # resolution of polygon
-    x = np.linspace(domain_ext[0], domain_ext[1],
-                    int((domain_ext[1] - domain_ext[0]) / dx))
-    y = np.linspace(domain_ext[2], domain_ext[3],
-                    int((domain_ext[3] - domain_ext[2]) / dy))
-    poly_x, poly_y = coord2poly(x, y)
-    coords = ccrs.PlateCarree().transform_points(crs_laea, poly_x, poly_y)
-    add_ext_na = 2.0
-    extent_na = [np.maximum(coords[:, 0].min() - add_ext_na, -180.0),
-                 np.minimum(coords[:, 0].max() + add_ext_na, 180.0),
-                 np.maximum(coords[:, 1].min() - add_ext_na, -90.0),
-                 np.minimum(coords[:, 1].max() + add_ext_na, 90.0)]
-    domain_set[i] = {}
-    domain_set[i]["map_projection"] = crs_laea
-    domain_set[i]["domain_extent"] = domain_ext
-    domain_set[i]["width"] = 1.0 / ax.get_data_ratio()
-    domain_set[i]["extent_natural_earth"] = extent_na
-    # plt.close(fig)
+    # Interpolate background image
+    x_ip = np.linspace(bounds[0], bounds[2], 3000)
+    y_ip = np.linspace(bounds[1], bounds[3], 3000)
+    crs_proj_image = CRS.from_user_input(crs_image)
+    transformer = Transformer.from_crs(crs_proj_laea, crs_proj_image,
+                                       always_xy=True)
+    lon_ip, lat_ip = transformer.transform(*np.meshgrid(x_ip, y_ip))
 
-# Final plot with domains
-width_ratios = [domain_set[i]["width"] for i in domains.keys()]
-fig_width = float(len(domains) * (16 / 3))
-fig = plt.figure(figsize=(fig_width, fig_width / sum(width_ratios)))
-gs = gridspec.GridSpec(1, len(domains), left=0.02, bottom=0.02, right=0.98,
-                       top=0.98, hspace=0.0, wspace=0.025,
-                       width_ratios=width_ratios)
-n = 0
-for i in list(domains.keys()):
+    temp = []
+    for j in range(3):
+        grid = pyinterp.Grid2D(x_axis, y_axis, image[:, :, j].transpose())
+        data_ip = pyinterp.bivariate(
+            grid, lon_ip.ravel(), lat_ip.ravel(),
+            interpolator="bilinear", bounds_error=True, num_threads=0)
+        temp.append(data_ip.reshape(lon_ip.shape)[:, :, np.newaxis])
+    image_ip = np.concatenate(temp, axis=2).astype(np.uint8)
 
-    ax = plt.subplot(gs[n], projection=domain_set[i]["map_projection"])
+    # Domain labels (-> have to be set manually...)
+    label_pos = {
+        # ---------------------------------------------------------------------
+        "Europe": {
+            "EURO":        (-2_000_000, 1_400_000),
+            "EURO-CORDEX": (-2_800_000, 2_000_000),
+            "ALP":         (-800_000, 180_000)},
+        # ---------------------------------------------------------------------
+        "Atlantic": {
+            "T_ATL":       (-2_900_000, 2_200_000),
+            "L_ATL":       (+2_000_000, 2_300_000)},
+        # ---------------------------------------------------------------------
+        "East_Asia": {
+            "EAS-CORDEX":  (-4_100_000, 3_500_000),
+            "BECCY":       (-2_900_000, 1_100_000)
+                      }
+        # ---------------------------------------------------------------------
+    }
 
-    # Plot raster background
-    extent_na = domain_set[i]["extent_natural_earth"]
-    sd = (slice(np.argmin(np.abs(extent_na[3] - lat)),
-                np.argmin(np.abs(extent_na[2] - lat))),
-          slice(np.argmin(np.abs(extent_na[0] - lon)),
-                np.argmin(np.abs(extent_na[1] - lon))))
-    extent_sd = [lon[sd[1].start], lon[sd[1].stop],
-                 lat[sd[0].stop], lat[sd[0].start]]
-    t_beg = time.time()
-    plt.imshow(image[sd], extent=extent_sd, transform=ccrs.PlateCarree(),
-               interpolation="spline36", origin="upper",
-               rasterized=True, regrid_shape=regrid_shape)
-    print("Time for plotting raster: %.2f" % (time.time() - t_beg) + " s")
-    ax.coastlines("50m", linewidth=0.5)
-    ax.set_extent(domain_set[i]["domain_extent"],
-                  crs=domain_set[i]["map_projection"])
+    # Plot
+    bounds_ro = (bounds[0], bounds[2], bounds[1], bounds[3])
+    ax = plt.subplot(gs[ind_i], projection=crs_laea)
+    ax.imshow(np.flipud(image_ip), extent=bounds_ro, transform=crs_laea)
     ax.set_aspect("auto")
-
-    # Plot COSMO domains
-    for j in list(domains[i].keys()):
-        crs_rot = ccrs.RotatedPole(pole_latitude=domains[i][j]["pollat"],
-                                   pole_longitude=domains[i][j]["pollon"],
-                                   central_rotated_longitude
-                                   =domains[i][j]["polgam"])
-        rlon, rlat = rlon_rlat_1d(domains[i][j])
-        poly_rlon, poly_rlat = coord2poly(rlon, rlat)
-        poly = plt.Polygon(list(zip(poly_rlon, poly_rlat)), facecolor="none",
-                           edgecolor="black", alpha=1.0,
-                           linewidth=1.5, zorder=4, transform=crs_rot)
-        ax.add_patch(poly)
-        x_txt, y_txt = rlon[0], rlat[-1]
-        if (i in label_offset.keys()) and (j in label_offset[i].keys()):
-            x_txt += label_offset[i][j][0]
-            y_txt += label_offset[i][j][1]
-        plt.text(x_txt, y_txt, domains[i][j]["name_plot"],
-                 fontsize=10, fontweight="bold", transform=crs_rot)
-
+    ax.coastlines("50m", linewidth=0.5)
+    for ind_j, j in enumerate(domains_map_proj):
+        poly = polygon2patch(j, facecolor="none", edgecolor="black",
+                             alpha=1.0, linewidth=2.0, transform=crs_laea)
+        ax.add_collection(poly)
+        # ---------------------------------------------------------------------
+        dom_name = list(domains[i].keys())[ind_j]
+        plt.text(*label_pos[i][dom_name], domains[i][dom_name]["name_plot"],
+                 fontsize=10, fontweight="bold", transform=crs_laea)
+        # ---------------------------------------------------------------------
+    ax.set_extent(bounds_ro, crs=crs_laea)
     print("Region " + i + " plotted")
 
-    n += 1
 fig.savefig(path_plot + "COSMO_domains.png", dpi=300, bbox_inches="tight")
 plt.close(fig)
