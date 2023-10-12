@@ -13,14 +13,11 @@ import cartopy.crs as ccrs
 from tqdm import tqdm
 import requests
 import zipfile
-from shapely.geometry import MultiPolygon
-from shapely.ops import transform
 import pyinterp
 from PIL import Image
 import PIL
 from utilities.plot import polygon2patch
 from utilities.grid import polygon_rectangular
-from pyproj import CRS, Transformer
 
 mpl.style.use("classic")
 
@@ -69,14 +66,12 @@ os.remove(path_data + file_url.split("/")[-1])
 file_bg = path_data + file_name + "/" + file_name + ".tif"
 
 ###############################################################################
-# Load and check Natural Earth background data
+# Load (and check) Natural Earth background data
 ###############################################################################
 
 # Load image and create geographic coordinates
 PIL.Image.MAX_IMAGE_PIXELS = 233280000
-image = np.flipud(plt.imread(file_bg))  # (8100, 16200, 3)
-# (M, N, 3): an image with RGB values (0-1 float or 0-255 int)
-# longitude: -180.0 -> +180.0 degree, latitude: -90.0 -> +90.0 degree
+image = np.flipud(plt.imread(file_bg))  # (8100, 16200, 3), RGB, 0-255
 extent = (-180.0, 180.0, -90.0, 90.0)
 dlon_h = (extent[1] - extent[0]) / (float(image.shape[1]) * 2.0)
 lon = np.linspace(extent[0] + dlon_h, extent[1] - dlon_h, image.shape[1])
@@ -84,13 +79,19 @@ dlat_h = (extent[3] - extent[2]) / (float(image.shape[0]) * 2.0)
 lat = np.linspace(extent[2] + dlat_h, extent[3] - dlat_h, image.shape[0])
 crs_image = ccrs.PlateCarree()
 
-# # Test plot in geographic coordinate system
+# # Plot image in geographic coordinate system
 # fig = plt.figure(figsize=(12, 6))
 # ax = plt.axes()
 # plt.imshow(np.flipud(image), extent=extent)
 # ax.set_aspect("auto")
 # xt = plt.xticks(range(-180, 210, 30))
 # yt = plt.yticks(range(-90, 120, 30))
+
+# Add data rows at poles (-90, +90 degree)
+lat_add = np.concatenate((np.array([-90.0]), lat, np.array([+90.0])))
+image_add = np.concatenate((image[:1, ...], image, image[-1:, ...]), axis=0)
+x_axis = pyinterp.Axis(lon, is_circle=True)
+y_axis = pyinterp.Axis(lat_add)
 
 ###############################################################################
 # Domain specifications and plot settings
@@ -191,43 +192,22 @@ domains = {
 # Plot
 ###############################################################################
 
-# Interpolation axis
-x_axis = pyinterp.Axis(lon, is_circle=True)
-y_axis = pyinterp.Axis(lat)
-
-# Intermediate plot with domains (-> compute domain settings)
+# Plot maps
 fig = plt.figure(figsize=(18.0, 5.0))  # width, height
 gs = gridspec.GridSpec(1, 3, left=0.02, bottom=0.02, right=0.98,
-                       top=0.98, hspace=0.0, wspace=0.025,
-                       width_ratios=[1.0, 1.35, 1.4375])
+                       top=0.98, hspace=0.1, wspace=-0.2,
+                       width_ratios=[1.0, 1.0, 1.0])
 for ind_i, i in enumerate(domains.keys()):
 
-    # Compute 'average coordinate origin' for domain
-    cen_lon, cen_lat = [], []
-    for j in list(domains[i].keys()):
-        crs_rot = ccrs.RotatedPole(pole_latitude=domains[i][j]["pollat"],
-                                   pole_longitude=domains[i][j]["pollon"],
-                                   central_rotated_longitude
-                                   =domains[i][j]["polgam"])
-        x, y = ccrs.PlateCarree().transform_point(0.0, 0.0, crs_rot)
-        cen_lon.append(x)
-        cen_lat.append(y)
-    cen_lon, cen_lat = np.mean(cen_lon), np.mean(cen_lat)
-
-    # Define map projection
-    crs_map = ccrs.LambertAzimuthalEqualArea(
-        central_longitude=cen_lon, central_latitude=cen_lat)
-    crs_proj_map = CRS.from_user_input(crs_map)
-
-    # Compute bounding box in map projection
-    domains_map_proj = []
-    for j in list(domains[i].keys()):
-
-        # Rectangular domain in rotated coordinates
-        crs_rot = ccrs.RotatedPole(pole_latitude=domains[i][j]["pollat"],
-                                   pole_longitude=domains[i][j]["pollon"],
-                                   central_rotated_longitude
-                                   =domains[i][j]["polgam"])
+    # Compute domain boundaries and map centre
+    domains_rot = []
+    cen_lon = 0.0
+    cen_lat = 0.0
+    for j in domains[i].keys():
+        crs_rot = ccrs.RotatedPole(
+            pole_latitude=domains[i][j]["pollat"],
+            pole_longitude=domains[i][j]["pollon"],
+            central_rotated_longitude=domains[i][j]["polgam"])
         rlon_llc = domains[i][j]["startlon_tot"] \
             - (domains[i][j]["dlon"] / 2.0)
         rlat_llc = domains[i][j]["startlat_tot"] \
@@ -237,71 +217,71 @@ for ind_i, i in enumerate(domains.keys()):
                rlon_llc + domains[i][j]["ie_tot"] * domains[i][j]["dlon"],
                rlat_llc + domains[i][j]["je_tot"] * domains[i][j]["dlat"])
         poly = polygon_rectangular(box, spacing=0.01)
+        domains_rot.append((poly, crs_rot))
+        x, y = poly.centroid.xy
+        lon, lat = ccrs.PlateCarree().transform_point([0], y[0], crs_rot)
+        cen_lon += lon
+        cen_lat += lat
+    cen_lon /= len(domains[i].keys())
+    cen_lat /= len(domains[i].keys())
 
-        # Rectangular domain in map projection
-        crs_proj_rot = CRS.from_user_input(crs_rot)
-        project = Transformer.from_crs(crs_proj_rot, crs_proj_map,
-                                       always_xy=True).transform
-        domains_map_proj.append(transform(project, poly))
-    bounds = MultiPolygon(domains_map_proj).bounds
-    # x_min, y_min, x_max, y_max
-    bounds = (bounds[0] - 250_000.0,
-              bounds[1] - 250_000.0,
-              bounds[2] + 250_000.0,
-              bounds[3] + 250_000.0)
+    # Compute map extent
+    crs_map = ccrs.Orthographic(central_longitude=cen_lon,
+                                central_latitude=cen_lat)
+    plt.figure()
+    ax = plt.axes(projection=crs_map)
+    ax.set_global()
+    extent_map = ax.axis()
+    plt.close()
 
     # Interpolate background image
-    x_ip = np.linspace(bounds[0], bounds[2], 3000)
-    y_ip = np.linspace(bounds[1], bounds[3], 3000)
-    crs_proj_image = CRS.from_user_input(crs_image)
-    transformer = Transformer.from_crs(crs_proj_map, crs_proj_image,
-                                       always_xy=True)
-    lon_ip, lat_ip = transformer.transform(*np.meshgrid(x_ip, y_ip))
-
-    temp = []
+    x_ip = np.linspace(extent_map[0], extent_map[1], 3000)
+    y_ip = np.linspace(extent_map[2], extent_map[3], 3000)
+    coord = crs_image.transform_points(crs_map, *np.meshgrid(x_ip, y_ip))
+    lon_ip = coord[:, :, 0]
+    lat_ip = coord[:, :, 1]
+    mask = np.isfinite(lon_ip)
+    image_ip = np.zeros(mask.shape + (3,), dtype=np.uint8)
     for j in range(3):
-        grid = pyinterp.Grid2D(x_axis, y_axis, image[:, :, j].transpose())
+        grid = pyinterp.Grid2D(x_axis, y_axis, image_add[:, :, j].transpose())
         data_ip = pyinterp.bivariate(
-            grid, lon_ip.ravel(), lat_ip.ravel(),
+            grid, lon_ip[mask], lat_ip[mask],
             interpolator="bilinear", bounds_error=True, num_threads=0)
-        temp.append(data_ip.reshape(lon_ip.shape)[:, :, np.newaxis])
-    image_ip = np.concatenate(temp, axis=2).astype(np.uint8)
+        image_ip[:, :, j][mask] = data_ip
 
-    # Domain labels (-> have to be set manually...)
+    # Domain labels (-> have to be set manually)
     label_pos = {
         # ---------------------------------------------------------------------
         "Europe": {
-            "EURO":        (-2_000_000, 1_400_000),
-            "EURO-CORDEX": (-2_800_000, 2_000_000),
-            "ALP":         (-800_000, 180_000)},
+            "EURO":        (-2_000_000, -2_200_000),
+            "EURO-CORDEX": (600_000, -3_300_000),
+            "ALP":         (-100_000, 0.0)},
         # ---------------------------------------------------------------------
         "Atlantic": {
-            "T_ATL":       (-2_900_000, 2_200_000),
-            "L_ATL":       (+2_000_000, 2_300_000)},
+            "T_ATL":       (-3_100_000, -1_400_000),
+            "L_ATL":       (1_650_000, 2_750_000)},
         # ---------------------------------------------------------------------
         "East_Asia": {
-            "EAS-CORDEX":  (-4_100_000, 3_500_000),
-            "BECCY":       (-2_900_000, 1_100_000)
+            "EAS-CORDEX":  (-3_400_000, 3_550_000),
+            "BECCY":       (-2_800_000, 1_300_000)
                       }
         # ---------------------------------------------------------------------
     }
 
     # Plot
-    bounds_ro = (bounds[0], bounds[2], bounds[1], bounds[3])
     ax = plt.subplot(gs[ind_i], projection=crs_map)
-    ax.imshow(np.flipud(image_ip), extent=bounds_ro, transform=crs_map)
-    ax.set_aspect("auto")
+    ax.imshow(np.flipud(image_ip), extent=extent_map, transform=crs_map)
     ax.coastlines("50m", linewidth=0.5)
-    for ind_j, j in enumerate(domains_map_proj):
-        poly = polygon2patch(j, facecolor="none", edgecolor="black",
-                             alpha=1.0, linewidth=2.0, transform=crs_map)
+    for ind_j, j in enumerate(domains_rot):
+        poly = polygon2patch(domains_rot[ind_j][0], facecolor="none",
+                             edgecolor="black", alpha=1.0, linewidth=2.0,
+                             transform=domains_rot[ind_j][1])
         ax.add_collection(poly)
         # ---------------------------------------------------------------------
         dom_name = list(domains[i].keys())[ind_j]
         plt.text(*label_pos[i][dom_name], domains[i][dom_name]["name_plot"],
                  fontsize=10, fontweight="bold", transform=crs_map)
         # ---------------------------------------------------------------------
-    ax.set_extent(bounds_ro, crs=crs_map)
     print("Region " + i + " plotted")
 
 fig.savefig(path_plot + "COSMO_domains.png", dpi=300, bbox_inches="tight")
