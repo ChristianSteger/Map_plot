@@ -10,12 +10,15 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 import matplotlib.gridspec as gridspec
 import cartopy.crs as ccrs
+from shapely.ops import transform
+from shapely.ops import unary_union
 from tqdm import tqdm
 import requests
 import zipfile
 import pyinterp
 from PIL import Image
 import PIL
+from pyproj import CRS, Transformer
 from utilities.plot import polygon2patch
 from utilities.grid import polygon_rectangular
 
@@ -201,9 +204,7 @@ for ind_i, i in enumerate(domains.keys()):
 
     # Compute domain boundaries and map centre
     domains_rot = []
-    cen_lon = 0.0
-    cen_lat = 0.0
-    for j in domains[i].keys():
+    for ind_j, j in enumerate(domains[i].keys()):
         crs_rot = ccrs.RotatedPole(
             pole_latitude=domains[i][j]["pollat"],
             pole_longitude=domains[i][j]["pollon"],
@@ -217,13 +218,18 @@ for ind_i, i in enumerate(domains.keys()):
                rlon_llc + domains[i][j]["ie_tot"] * domains[i][j]["dlon"],
                rlat_llc + domains[i][j]["je_tot"] * domains[i][j]["dlat"])
         poly = polygon_rectangular(box, spacing=0.01)
-        domains_rot.append((poly, crs_rot))
-        x, y = poly.centroid.xy
-        lon, lat = ccrs.PlateCarree().transform_point([0], y[0], crs_rot)
-        cen_lon += lon
-        cen_lat += lat
-    cen_lon /= len(domains[i].keys())
-    cen_lat /= len(domains[i].keys())
+        if ind_j == 0:
+            domains_rot.append(poly)
+            crs_rot_ref = crs_rot
+        else:
+            project = Transformer.from_crs(
+                CRS.from_user_input(crs_rot),
+                CRS.from_user_input(crs_rot_ref),
+                always_xy=True).transform
+            domains_rot.append(transform(project, poly))
+    domains_union = unary_union(domains_rot)
+    cen_lon, cen_lat = ccrs.PlateCarree().transform_point(
+        *domains_union.centroid.xy, crs_rot)
 
     # Compute map extent
     crs_map = ccrs.Orthographic(central_longitude=cen_lon,
@@ -253,17 +259,17 @@ for ind_i, i in enumerate(domains.keys()):
     label_pos = {
         # ---------------------------------------------------------------------
         "Europe": {
-            "EURO":        (-2_000_000, -2_200_000),
-            "EURO-CORDEX": (600_000, -3_300_000),
-            "ALP":         (-100_000, 0.0)},
+            "EURO":        (-1_900_000, -2_400_000),
+            "EURO-CORDEX": (1_200_000, -3_400_000),
+            "ALP":         (200_000, -100_000)},
         # ---------------------------------------------------------------------
         "Atlantic": {
-            "T_ATL":       (-3_100_000, -1_400_000),
-            "L_ATL":       (1_650_000, 2_750_000)},
+            "T_ATL":       (-1_500_000, -750_000),
+            "L_ATL":       (2_800_000, 2_550_000)},
         # ---------------------------------------------------------------------
         "East_Asia": {
-            "EAS-CORDEX":  (-3_400_000, 3_550_000),
-            "BECCY":       (-2_800_000, 1_300_000)
+            "EAS-CORDEX":  (-3_400_000, 3_400_000),
+            "BECCY":       (-2_800_000, 1_100_000)
                       }
         # ---------------------------------------------------------------------
     }
@@ -273,9 +279,9 @@ for ind_i, i in enumerate(domains.keys()):
     ax.imshow(np.flipud(image_ip), extent=extent_map, transform=crs_map)
     ax.coastlines("50m", linewidth=0.5)
     for ind_j, j in enumerate(domains_rot):
-        poly = polygon2patch(domains_rot[ind_j][0], facecolor="none",
+        poly = polygon2patch(domains_rot[ind_j], facecolor="none",
                              edgecolor="black", alpha=1.0, linewidth=2.0,
-                             transform=domains_rot[ind_j][1])
+                             transform=crs_rot_ref)
         ax.add_collection(poly)
         # ---------------------------------------------------------------------
         dom_name = list(domains[i].keys())[ind_j]
