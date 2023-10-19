@@ -6,7 +6,7 @@ Python scripts for producing map plots related to climate modelling.
 First, create a Conda environment with all the required Python packages:
 
 ```bash
-conda create -n map_plot -c conda-forge numpy tqdm requests xarray matplotlib cartopy pyproj cmcrameri shapely pyinterp
+conda create -n map_plot -c conda-forge numpy xarray matplotlib cartopy pyproj cmcrameri shapely
 ```
 
 Subsequently, install the Python packages [Utilities](https://github.com/ChristianSteger/Utilities).

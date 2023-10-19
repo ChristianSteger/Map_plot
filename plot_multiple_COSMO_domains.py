@@ -12,89 +12,15 @@ import matplotlib.gridspec as gridspec
 import cartopy.crs as ccrs
 from shapely.ops import transform
 from shapely.ops import unary_union
-from tqdm import tqdm
-import requests
-import zipfile
-import pyinterp
-from PIL import Image
-import PIL
 from pyproj import CRS, Transformer
 from utilities.plot import polygon2patch
 from utilities.grid import polygon_rectangular
+from utilities.plot import naturalearth_background
 
 mpl.style.use("classic")
 
 # Paths to folders
-path_data = "/Users/csteger/Dropbox/IAC/Temp/Map_plot_data/"  # working dir.
 path_plot = "/Users/csteger/Desktop/"
-
-###############################################################################
-# Download high-resolution background data from Natural Earth
-###############################################################################
-
-# Select background file
-# file_url = "https://www.naturalearthdata.com/http//www.naturalearthdata" \
-#            + ".com/download/10m/raster/HYP_LR_SR_W_DR.zip"
-file_url = "https://www.naturalearthdata.com/http//www.naturalearthdata" \
-           + ".com/download/10m/raster/HYP_LR_SR_OB_DR.zip"
-# further available data can be found here:
-# https://www.naturalearthdata.com/downloads/10m-raster-data
-
-# Download
-if not os.path.isdir(path_data):
-    raise ValueError("Path for data does not exist")
-response = requests.get(file_url, stream=True, headers={"User-Agent": "XY"})
-if response.ok:
-    total_size_in_bytes = int(response.headers.get("content-length", 0))
-    block_size = 1024 * 10
-    progress_bar = tqdm(total=total_size_in_bytes, unit="iB",
-                        unit_scale=True)
-    with open(path_data + os.path.split(file_url)[-1], "wb") as infile:
-        for data in response.iter_content(block_size):
-            progress_bar.update(len(data))
-            infile.write(data)
-    progress_bar.close()
-    if total_size_in_bytes != 0 and progress_bar.n != total_size_in_bytes:
-        raise ValueError("Inconsistency in file size")
-else:
-    raise ValueError("URL does not exist")
-
-# Unzip
-file_name = file_url.split("/")[-1].split(".")[0]
-with zipfile.ZipFile(path_data + file_url.split("/")[-1], "r") as zip_ref:
-    zip_ref.extractall(path_data + file_name)
-os.remove(path_data + file_url.split("/")[-1])
-
-# Path to TIFF with background
-file_bg = path_data + file_name + "/" + file_name + ".tif"
-
-###############################################################################
-# Load (and check) Natural Earth background data
-###############################################################################
-
-# Load image and create geographic coordinates
-PIL.Image.MAX_IMAGE_PIXELS = 233280000
-image = np.flipud(plt.imread(file_bg))  # (8100, 16200, 3), RGB, 0-255
-extent = (-180.0, 180.0, -90.0, 90.0)
-dlon_h = (extent[1] - extent[0]) / (float(image.shape[1]) * 2.0)
-lon = np.linspace(extent[0] + dlon_h, extent[1] - dlon_h, image.shape[1])
-dlat_h = (extent[3] - extent[2]) / (float(image.shape[0]) * 2.0)
-lat = np.linspace(extent[2] + dlat_h, extent[3] - dlat_h, image.shape[0])
-crs_image = ccrs.PlateCarree()
-
-# # Plot image in geographic coordinate system
-# fig = plt.figure(figsize=(12, 6))
-# ax = plt.axes()
-# plt.imshow(np.flipud(image), extent=extent)
-# ax.set_aspect("auto")
-# xt = plt.xticks(range(-180, 210, 30))
-# yt = plt.yticks(range(-90, 120, 30))
-
-# Add data rows at poles (-90, +90 degree)
-lat_add = np.concatenate((np.array([-90.0]), lat, np.array([+90.0])))
-image_add = np.concatenate((image[:1, ...], image, image[-1:, ...]), axis=0)
-x_axis = pyinterp.Axis(lon, is_circle=True)
-y_axis = pyinterp.Axis(lat_add)
 
 ###############################################################################
 # Domain specifications and plot settings
@@ -230,30 +156,8 @@ for ind_i, i in enumerate(domains.keys()):
     domains_union = unary_union(domains_rot)
     cen_lon, cen_lat = ccrs.PlateCarree().transform_point(
         *domains_union.centroid.xy, crs_rot)
-
-    # Compute map extent
     crs_map = ccrs.Orthographic(central_longitude=cen_lon,
                                 central_latitude=cen_lat)
-    plt.figure()
-    ax = plt.axes(projection=crs_map)
-    ax.set_global()
-    extent_map = ax.axis()
-    plt.close()
-
-    # Interpolate background image
-    x_ip = np.linspace(extent_map[0], extent_map[1], 3000)
-    y_ip = np.linspace(extent_map[2], extent_map[3], 3000)
-    coord = crs_image.transform_points(crs_map, *np.meshgrid(x_ip, y_ip))
-    lon_ip = coord[:, :, 0]
-    lat_ip = coord[:, :, 1]
-    mask = np.isfinite(lon_ip)
-    image_ip = np.zeros(mask.shape + (3,), dtype=np.uint8)
-    for j in range(3):
-        grid = pyinterp.Grid2D(x_axis, y_axis, image_add[:, :, j].transpose())
-        data_ip = pyinterp.bivariate(
-            grid, lon_ip[mask], lat_ip[mask],
-            interpolator="bilinear", bounds_error=True, num_threads=0)
-        image_ip[:, :, j][mask] = data_ip
 
     # Domain labels (-> have to be set manually)
     label_pos = {
@@ -276,18 +180,20 @@ for ind_i, i in enumerate(domains.keys()):
 
     # Plot
     ax = plt.subplot(gs[ind_i], projection=crs_map)
-    ax.imshow(np.flipud(image_ip), extent=extent_map, transform=crs_map)
+    ax.set_global()
+    image_name = "cross_blended_hypso_with_relief_water_drains_" \
+                 + "and_ocean_bottom"
+    naturalearth_background(ax, image_name=image_name, image_res="medium",
+                            interp_res=(3000, 3000))
     ax.coastlines("50m", linewidth=0.5)
     for ind_j, j in enumerate(domains_rot):
         poly = polygon2patch(domains_rot[ind_j], facecolor="none",
                              edgecolor="black", alpha=1.0, linewidth=2.0,
                              transform=crs_rot_ref)
         ax.add_collection(poly)
-        # ---------------------------------------------------------------------
         dom_name = list(domains[i].keys())[ind_j]
         plt.text(*label_pos[i][dom_name], domains[i][dom_name]["name_plot"],
                  fontsize=10, fontweight="bold", transform=crs_map)
-        # ---------------------------------------------------------------------
     print("Region " + i + " plotted")
 
 fig.savefig(path_plot + "COSMO_domains.png", dpi=300, bbox_inches="tight")
